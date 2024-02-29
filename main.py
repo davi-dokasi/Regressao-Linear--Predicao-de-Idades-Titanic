@@ -3,6 +3,9 @@ import pandas as pd
 import numpy as np
 import seaborn as sns
 import matplotlib.pyplot as plt
+from sklearn import linear_model
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import mean_squared_error
 
 # Datasets
 train = pd.read_csv('titanic/train.csv')
@@ -80,13 +83,13 @@ plt.hist(solteira_comPais['Idade'], bins=15) # Verificando a distribuição da i
 plt.show()
 
 dados.loc[(dados['Titulo'] == 'Solteira')]['Idade'].mean() # Confirmando nossa engenharia de recursos
-# solteira_comPais tem média 12.1788, enquanto a média calculada acima de mulheres solteiras é de 21.7742
+## solteira_comPais tem média 12.1788, enquanto a média calculada acima de mulheres solteiras é de 21.7742
 
 plt.hist(dados.loc[(dados['Titulo'] == 'Solteira')]['Idade'], bins=15, color='blue')
 plt.show() # Distribuição idade mulheres solteiras
  
-dados.loc[(dados['Titulo'] == 'Casada')]['Idade'].mean() # Como confirmamos, casadas média 39.994
-# por curiosidade, olhar a distribuição
+dados.loc[(dados['Titulo'] == 'Casada')]['Idade'].mean() ## Como confirmamos, casadas média 39.994
+## por curiosidade, olhar a distribuição
 plt.hist(dados.loc[(dados['Titulo'] == 'Casada')]['Idade'], bins=15, color='blue')
 plt.show()
 
@@ -98,11 +101,67 @@ for idx, _ in dados.iterrows():
         dados['solteira_com_pais'].at[idx] = 1
         
 
-# cols_numericas = dados.select_dtypes(include=[np.number]).columns
+## cols_numericas = dados.select_dtypes(include=[np.number]).columns
 dados.loc[dados['solteira_com_pais']==1]['Idade'].mean() # 12.1788
 
 dados.loc[dados['solteira_com_pais']==0]['Idade'].mean() # 31.2681
-# Aqui ja vemos uma diferença absurda! Com isso temos certeza que as flags ajudarão ao modelo
+## Aqui ja vemos uma diferença absurda! Com isso temos certeza que as flags ajudarão ao modelo
 
+# Transformando recursos categóricos em "dummies"
+dados['Sexo'] = dados['Sexo'].map({'homem': 0, 'mulher': 1})
+dados = pd.get_dummies(dados, columns=['Classe', 'Embarque', 'Titulo'], drop_first = True)
+dados.head()
+dados.isnull().sum()
 
+# Definindo train/test e X/y
+train_idade = dados.dropna()
+test_idade = dados.loc[dados['Idade'].isnull()].drop('Idade', axis=1)
 
+train_idade.shape, test_idade.shape
+
+# Definindo X e y para treinar o modelo
+X = train_idade.drop('Idade', axis=1)
+y = train_idade['Idade']
+
+X.shape, y.shape
+
+# Instanciando modelo
+lm = linear_model.LinearRegression()
+
+# Dividindo 70% para treino, 30% para teste
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size = 0.30, random_state =123)
+
+X_train.shape, y_train.shape
+X_test.shape, y_test.shape
+
+## Treinando o modelo
+lm.fit(X_train, y_train)
+
+pred = lm.predict(X_test)
+pred.shape
+
+lm.score(X_test, y_test) # 0.4805
+## aproximadamente 48.05% da variância na variável dependente é previsível a partir das variáveis independentes.
+
+mse =  mean_squared_error(y_test, pred)
+rmse = np.sqrt(mse) # Similar ao desvio padrão
+rmse # 10.36341734908139
+
+plt.scatter(y_test, pred)
+plt.plot([y_test.min(), y_test.max()], [y_test.min(), y_test.max()], 'r')
+plt.show()
+
+# Agora vamos aplicar o modelo aos dados nulos
+test_idade.shape
+pred_idade = lm.predict(test_idade)
+pred_idade.shape
+
+test_idade['Idade'] = pred_idade
+test_idade.isnull().sum() # Confirmando que não existem mais valores nulos
+
+idade = pd.concat([train_idade, test_idade], sort=False)
+
+idade_completa = pd.DataFrame({'IdPassageiro': idade.index, 'Idade': idade['Idade']})
+idade_completa
+
+idade_completa.to_csv('idade_completa.csv', index=False)
